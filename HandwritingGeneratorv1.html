@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>楷书字帖生成器</title>
+    <style>
+        /* ================= 基础设置 ================= */
+        body { font-family: "Microsoft YaHei", sans-serif; display: flex; margin: 0; height: 100vh; background: #f4f6f8; overflow: hidden; }
+
+        /* ================= 左侧选字区 ================= */
+        .sidebar { width: 320px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
+        .sidebar-header { padding: 15px; border-bottom: 1px solid #eee; background: #fafafa; }
+        .sidebar-header h2 { font-size: 18px; margin: 0 0 10px 0; color: #333; }
+        .status-text { font-size: 12px; color: #666; margin-top: 10px; text-align: center; }
+
+        .pagination { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; max-height: 100px; overflow-y: auto; border-top: 1px dashed #ddd; padding-top: 10px; }
+        .page-btn { padding: 3px 8px; border: 1px solid #ddd; border-radius: 12px; background: #fff; cursor: pointer; font-size: 12px; transition: 0.2s; }
+        .page-btn:hover { background: #f0f0f0; }
+        .page-btn.active { background: #007bff; color: #fff; border-color: #007bff; }
+
+        .char-list-container { flex: 1; overflow-y: auto; padding: 15px; background: #fdfdfd; }
+        .char-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .char-item { width: 50px; height: 50px; border: 1px solid #eee; border-radius: 4px; cursor: pointer; background: #fff; display: flex; align-items: center; justify-content: center; transition: 0.2s; overflow: hidden; padding: 2px; box-sizing: border-box; }
+        .char-item:hover { border-color: #007bff; transform: scale(1.05); }
+        .char-item.selected { border: 2px solid #007bff; background: #e6f0ff; box-shadow: 0 0 5px rgba(0,123,255,0.3); }
+        .char-item img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        /* ================= 右侧主区域 ================= */
+        .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 15px; overflow-y: auto; }
+
+        .toolbar { background: #fff; padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; position: sticky; top: 0; z-index: 100; width: 100%; max-width: 980px; box-sizing: border-box; }
+        .toolbar-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; }
+        .toolbar-row:not(:last-child) { border-bottom: 1px solid #eee; padding-bottom: 12px; }
+
+        .toolbar-group { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; background: #f8f9fa; padding: 5px 12px; border-radius: 20px; border: 1px solid #e9ecef; }
+        .toolbar-group span { font-weight: bold; color: #555; }
+
+        .toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 15px; cursor: pointer; font-weight: bold; font-size: 13px; background: #fff; transition: 0.2s; }
+        .toolbar button:hover { background: #f0f0f0; }
+        .toolbar button.btn-print { background: #28a745; color: white; border: none; }
+        .toolbar button.btn-print:hover { background: #218838; }
+        .toolbar button.btn-clear { color: #dc3545; border-color: #dc3545; }
+        .toolbar button.btn-clear:hover { background: #dc3545; color: white; }
+
+        .slider-box { display: flex; align-items: center; gap: 5px; }
+        .slider-box input[type="range"] { width: 80px; cursor: pointer; }
+        .slider-box .val-display { display: inline-block; width: 45px; text-align: right; font-weight: bold; color: #007bff; }
+
+        .toggle-box { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 13px; background: #f8f9fa; padding: 5px 12px; border-radius: 20px; border: 1px solid #e9ecef; }
+        .toggle-box input { cursor: pointer; }
+
+        .color-picker-box { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .color-picker-box input[type="color"] { width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%; cursor: pointer; overflow: hidden; }
+
+        /* 字帖纸张 */
+        #copybook { background: #fff; padding: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); border-radius: 8px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; }
+        .empty-tip { color: #aaa; font-size: 18px; text-align: center; padding: 100px 0; }
+
+        .copybook-row { display: flex; gap: 2px; }
+
+        /* 田字格 */
+        .tian-zi-ge {
+            width: var(--cell-size, 85px);
+            height: var(--cell-size, 85px);
+            border: 1px solid #ff7b7b;
+            position: relative;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center;
+            background: #fff;
+            flex-shrink: 0;
+            overflow: visible;
+        }
+        .tian-zi-ge.hide-border { border-color: transparent; }
+        .tian-zi-ge.hide-lines::before, .tian-zi-ge.hide-lines::after, .tian-zi-ge.hide-lines .diagonal-1, .tian-zi-ge.hide-lines .diagonal-2 { display: none; }
+
+        .tian-zi-ge::before, .tian-zi-ge::after { content: ''; position: absolute; z-index: 0; }
+        .tian-zi-ge::before { width: 100%; height: 0; top: 50%; left: 0; border-top: 1px dashed #ffb3b3; }
+        .tian-zi-ge::after { height: 100%; width: 0; left: 50%; top: 0; border-left: 1px dashed #ffb3b3; }
+        .tian-zi-ge .diagonal-1, .tian-zi-ge .diagonal-2 { position: absolute; width: 100%; height: 0; border-top: 1px dashed #ffb3b3; top: 50%; left: 0; }
+        .tian-zi-ge .diagonal-1 { transform: rotate(45deg); }
+        .tian-zi-ge .diagonal-2 { transform: rotate(-45deg); }
+
+        .char-box { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .char-box img { width: 100%; height: 100%; object-fit: contain; filter: brightness(0) opacity(1); }
+
+        .char-box .mask-char {
+            width: 100%; height: 100%;
+            -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center;
+            mask-size: 100% 100%; mask-repeat: no-repeat; mask-position: center;
+        }
+        .char-box .mask-char.hide-trace { display: none; }
+        /* 打印时用 canvas 生成的有色图片，不能再套上面的 brightness(0)（那会把它变黑） */
+        .char-box img.print-tint { filter: none !important; }
+
+        /* 页面大小模拟 */
+        .page-a4 { width: 210mm; min-height: 297mm; }
+        .page-a5 { width: 148mm; min-height: 210mm; }
+        .page-letter { width: 8.5in; min-height: 11in; }
+
+        /* 打印专用设置 */
+        @media print {
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body { background: #fff; overflow: visible; height: auto; display: block; }
+            .sidebar, .toolbar { display: none !important; }
+            .main { padding: 0; overflow: visible; display: block; }
+            #copybook { box-shadow: none; padding: 0; border-radius: 0; display: block; }
+            .copybook-row { page-break-inside: avoid; }
+            .tian-zi-ge { border-color: #ff0000; }
+            .tian-zi-ge.hide-border { border-color: transparent; }
+            .tian-zi-ge::before, .tian-zi-ge::after, .tian-zi-ge .diagonal-1, .tian-zi-ge .diagonal-2 { border-color: #ffcccc; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); z-index:9999; justify-content:center; align-items:center; font-size:20px; font-weight:bold; color:#007bff;">
+        ⏳ 正在准备打印文件，请稍候...
+    </div>
+
+    <!-- 左侧选字区 -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>📚 字帖提取库</h2>
+            <div class="pagination" id="pagination"></div>
+            <p class="status-text" id="statusText">正在扫描存在的文件夹...</p>
+        </div>
+        <div class="char-list-container">
+            <div class="char-grid" id="charGrid"></div>
+        </div>
+    </div>
+
+    <!-- 右侧主区域 -->
+    <div class="main">
+        <div class="toolbar">
+            <div class="toolbar-row">
+                <div class="toolbar-group">
+                    <span>描红颜色：</span>
+                    <input type="color" id="traceColorPicker" value="#ff9999" oninput="onColorChange()">
+                    <span style="margin-left:5px;">深浅：</span>
+                    <input type="range" id="traceOpacitySlider" min="10" max="100" value="35" oninput="onOpacityChange(this.value)" style="width: 60px;">
+                    <span class="val-display" id="traceOpacityVal">35%</span>
+                </div>
+                <div class="toolbar-group">
+                    <span>纸张：</span>
+                    <select id="pageSizeSelect" onchange="changePageSize()" style="padding: 2px 5px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                        <option value="a4">A4</option>
+                        <option value="a5">A5</option>
+                        <option value="letter">Letter</option>
+                    </select>
+                </div>
+                <div class="toolbar-group">
+                    <span>模式：</span>
+                    <select id="fillMode" onchange="renderCopybook()" style="padding: 2px 5px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                        <option value="page">单字满页</option>
+                        <option value="line">单字单行(可多行)</option>
+                        <option value="loop">多字循环满页</option>
+                    </select>
+                </div>
+                <div class="toolbar-group">
+                    <span>格子大小：</span>
+                    <input type="range" id="cellSizeSlider" min="40" max="120" value="85" oninput="changeCellSize(this.value)">
+                    <span class="val-display" id="cellSizeVal">85px</span>
+                </div>
+                <div class="toolbar-group">
+                    <span>字大小：</span>
+                    <input type="range" id="imgScaleSlider" min="50" max="200" value="85" oninput="changeImgScale(this.value)">
+                    <span class="val-display" id="imgScaleVal">85%</span>
+                    <span style="font-size: 11px; color: #999; margin-left: 5px;">(溢出时请调大格子)</span>
+                </div>
+            </div>
+
+            <div class="toolbar-row">
+                <label class="toggle-box">
+                    <input type="checkbox" id="toggleGridLines" checked onchange="toggleGridLines()">
+                    内部虚线
+                </label>
+                <label class="toggle-box">
+                    <input type="checkbox" id="toggleBorder" checked onchange="toggleBorder()">
+                    外边框
+                </label>
+                <label class="toggle-box">
+                    <input type="checkbox" id="toggleTrace" checked onchange="toggleTrace()">
+                    描红字
+                </label>
+                <label class="toggle-box" style="border-color: #007bff; background: #e6f0ff;">
+                    <input type="checkbox" id="toggleOriginTrace" onchange="toggleOriginTrace()">
+                    <span style="color: #0056b3;">范字变描红</span>
+                </label>
+                <div class="toolbar-group">
+                    <button class="btn-print" onclick="preparePrint()">🖨️ 打印 / 导出 PDF</button>
+                    <button class="btn-clear" onclick="clearAll()">🗑️ 清空字帖</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="copybook" class="page-a4">
+            <div class="empty-tip">请在左侧点击汉字，添加到字帖中</div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 全局变量 =================
+        const SUB = 'chars/';
+        let selectedChars = [];
+        let currentPage = '';
+        let traceColor = '#ff9999';
+        let traceOpacity = 0.35;
+        let cellSize = 85;
+        let imgScale = 0.85;
+        let showGridLines = true;
+        let showBorder = true;
+        let showTrace = true;
+        let originAsTrace = false;
+
+        window.onload = function() {
+            discoverFolders();
+        };
+
+        async function discoverFolders() {
+            const statusText = document.getElementById('statusText');
+            try {
+                const response = await fetch('./');
+                const html = await response.text();
+                const regex = /href="\.?\/?(\d{3})\/?"/g;
+                let match;
+                const validPages = new Set();
+                while ((match = regex.exec(html)) !== null) {
+                    validPages.add(match[1]);
+                }
+                const pagesArray = Array.from(validPages).sort();
+                if (pagesArray.length > 0) {
+                    renderPagination(pagesArray);
+                    statusText.textContent = `已发现 ${pagesArray.length} 个有效文件夹`;
+                    return;
+                }
+            } catch (e) {
+                console.warn("自动扫描文件夹失败，回退到默认页码。", e);
+            }
+            const fallbackPages = ['024', '025'];
+            renderPagination(fallbackPages);
+            statusText.textContent = `已加载默认文件夹 (${fallbackPages.join(', ')})`;
+        }
+
+        function renderPagination(pages) {
+            const paginationDiv = document.getElementById('pagination');
+            paginationDiv.innerHTML = '';
+            pages.forEach(page => {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.textContent = page;
+                btn.onclick = () => switchPage(page, btn);
+                paginationDiv.appendChild(btn);
+            });
+            const firstBtn = paginationDiv.querySelector('.page-btn');
+            if (firstBtn) switchPage(pages[0], firstBtn);
+        }
+
+        async function switchPage(page, btnElement) {
+            currentPage = page;
+            document.querySelectorAll('.page-btn').forEach(btn => btn.classList.remove('active'));
+            if (btnElement) btnElement.classList.add('active');
+
+            const charGrid = document.getElementById('charGrid');
+            charGrid.innerHTML = '';
+            document.getElementById('statusText').textContent = `正在加载 ${page} 页...`;
+
+            let filesToRender = [];
+
+            try {
+                const response = await fetch(`./${page}/${SUB}`);
+                if (response.ok) {
+                    const html = await response.text();
+                    const regex = /href="([^"]+\.(?:png|webp|jpe?g))"/gi;
+                    let match;
+                    while ((match = regex.exec(html)) !== null) {
+                        let filename = match[1];
+                        if (filename.includes('/')) filename = filename.split('/').pop();
+                        filename = decodeURIComponent(filename);
+                        filesToRender.push({ filename: filename, id: filename.replace(/\.[^.]+$/, '') });
+                    }
+                }
+            } catch (e) {
+                console.warn(`无法获取 ${page} 目录列表，将使用智能探测。`);
+            }
+
+            if (filesToRender.length === 0) {
+                let failCount = 0;
+                let i = 1;
+                while (i <= 200 && failCount < 5) {
+                    const seq = i.toString().padStart(3, '0');
+                    const id = page + seq;
+                    const url = `./${page}/${SUB}${id}.png`;
+                    const exists = await new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => resolve(true);
+                        img.onerror = () => resolve(false);
+                        img.src = url;
+                    });
+                    if (exists) {
+                        filesToRender.push({ filename: `${id}.png`, id: id });
+                        failCount = 0;
+                        i++;
+                    } else {
+                        failCount++;
+                        i++;
+                    }
+                }
+            }
+
+            if (filesToRender.length === 0) {
+                charGrid.innerHTML = '<div style="width:100%; text-align:center; color:#999; margin-top:20px;">该文件夹下未找到任何图片</div>';
+                document.getElementById('statusText').textContent = `已加载 ${page} 页 (未找到图片)`;
+                return;
+            }
+
+            filesToRender.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'char-item';
+                const isSelected = selectedChars.some(c => c.id === file.id);
+                if (isSelected) item.classList.add('selected');
+
+                const imgEl = document.createElement('img');
+                imgEl.src = `./${page}/${SUB}${file.filename}`;
+                imgEl.onerror = function() { item.style.display = 'none'; };
+
+                item.appendChild(imgEl);
+                item.onclick = () => {
+                    const index = selectedChars.findIndex(c => c.id === file.id);
+                    if (index > -1) {
+                        selectedChars.splice(index, 1);
+                        item.classList.remove('selected');
+                    } else {
+                        selectedChars.push({ id: file.id, url: imgEl.src });
+                        item.classList.add('selected');
+                    }
+                    renderCopybook();
+                };
+                charGrid.appendChild(item);
+            });
+
+            document.getElementById('statusText').textContent = `已加载 ${page} 页 (共 ${filesToRender.length} 字)`;
+        }
+
+        function renderCopybook() {
+            const copybook = document.getElementById('copybook');
+            if (selectedChars.length === 0) {
+                copybook.innerHTML = '<div class="empty-tip">请在左侧点击汉字，添加到字帖中</div>';
+                return;
+            }
+            copybook.innerHTML = '';
+
+            const pageWidth = copybook.clientWidth;
+            const pageHeight = copybook.clientHeight;
+            const maxCols = Math.max(1, Math.floor(pageWidth / (cellSize + 2)));
+            const maxRows = Math.max(1, Math.floor(pageHeight / (cellSize + 2)));
+            const mode = document.getElementById('fillMode').value;
+            const actualCharSize = Math.floor(cellSize * imgScale);
+
+            const createCell = (char, isOrigin) => {
+                const cell = document.createElement('div');
+                cell.className = 'tian-zi-ge';
+                cell.style.setProperty('--cell-size', cellSize + 'px');
+                if (!showGridLines) cell.classList.add('hide-lines');
+                if (!showBorder) cell.classList.add('hide-border');
+
+                const diag1 = document.createElement('div'); diag1.className = 'diagonal-1';
+                const diag2 = document.createElement('div'); diag2.className = 'diagonal-2';
+                cell.appendChild(diag1); cell.appendChild(diag2);
+
+                if (char) {
+                    const charBox = document.createElement('div');
+                    charBox.className = 'char-box';
+                    charBox.style.width = actualCharSize + 'px';
+                    charBox.style.height = actualCharSize + 'px';
+
+                    if (isOrigin && !originAsTrace) {
+                        const img = document.createElement('img');
+                        img.src = char.url;
+                        charBox.appendChild(img);
+                    } else {
+                        const maskDiv = document.createElement('div');
+                        maskDiv.className = 'mask-char';
+                        maskDiv.style.width = actualCharSize + 'px';
+                        maskDiv.style.height = actualCharSize + 'px';
+
+                        maskDiv.dataset.url = char.url;
+                        maskDiv.style.backgroundColor = traceColor;
+                        maskDiv.style.opacity = traceOpacity;
+                        maskDiv.style.webkitMaskImage = `url(${char.url})`;
+                        maskDiv.style.maskImage = `url(${char.url})`;
+
+                        if (!isOrigin && !showTrace) {
+                            maskDiv.classList.add('hide-trace');
+                        }
+                        charBox.appendChild(maskDiv);
+                    }
+                    cell.appendChild(charBox);
+                }
+                return cell;
+            };
+
+            if (mode === 'loop') {
+                let charIndex = 0;
+                for (let r = 0; r < maxRows; r++) {
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'copybook-row';
+                    for (let c = 0; c < maxCols; c++) {
+                        const char = selectedChars[charIndex % selectedChars.length];
+                        const isOrigin = (r === 0 && c === 0);
+                        rowDiv.appendChild(createCell(char, isOrigin));
+                        charIndex++;
+                    }
+                    copybook.appendChild(rowDiv);
+                }
+            } else if (mode === 'line') {
+                selectedChars.forEach(char => {
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'copybook-row';
+                    for (let c = 0; c < maxCols; c++) {
+                        rowDiv.appendChild(createCell(char, c === 0));
+                    }
+                    copybook.appendChild(rowDiv);
+                });
+            } else if (mode === 'page') {
+                selectedChars.forEach(char => {
+                    for (let r = 0; r < maxRows; r++) {
+                        const rowDiv = document.createElement('div');
+                        rowDiv.className = 'copybook-row';
+                        for (let c = 0; c < maxCols; c++) {
+                            rowDiv.appendChild(createCell(char, c === 0));
+                        }
+                        copybook.appendChild(rowDiv);
+                    }
+                });
+            }
+        }
+
+        // ================= 打印预渲染逻辑（彻底解决变黑问题） =================
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('图片加载失败: ' + src));
+                img.src = src;
+            });
+        }
+
+        async function preparePrint() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = 'flex';
+            await new Promise(r => setTimeout(r, 50));
+
+            const maskChars = document.querySelectorAll('.mask-char');
+            const originalElements = [];
+            let failCount = 0;
+
+            for (let i = 0; i < maskChars.length; i++) {
+                const el = maskChars[i];
+                if (el.classList.contains('hide-trace')) continue;
+
+                const url = el.dataset.url;
+                if (!url) continue;
+
+                const size = el.offsetWidth;
+                let replacementImg = null;
+
+                try {
+                    const img = await loadImage(url);
+                    const canvas = document.createElement('canvas');
+                    const SCALE = 3; // 放大3倍，PDF 里笔画更清晰
+                    canvas.width = size * SCALE;
+                    canvas.height = size * SCALE;
+                    const ctx = canvas.getContext('2d');
+
+                    const r = parseInt(traceColor.slice(1,3), 16);
+                    const g = parseInt(traceColor.slice(3,5), 16);
+                    const b = parseInt(traceColor.slice(5,7), 16);
+                    const a = traceOpacity;
+                    const nr = Math.round(r * a + 255 * (1 - a));
+                    const ng = Math.round(g * a + 255 * (1 - a));
+                    const nb = Math.round(b * a + 255 * (1 - a));
+                    const finalColor = `rgb(${nr}, ${ng}, ${nb})`;
+
+                    ctx.drawImage(img, 0, 0, size * SCALE, size * SCALE);
+                    ctx.globalCompositeOperation = 'source-in';
+                    ctx.fillStyle = finalColor;
+                    ctx.fillRect(0, 0, size * SCALE, size * SCALE);
+
+                    let dataUrl = canvas.toDataURL('image/png');
+
+                    replacementImg = document.createElement('img');
+                    replacementImg.src = dataUrl;
+                    replacementImg.className = 'print-tint';
+                    replacementImg.style.width = '100%';
+                    replacementImg.style.height = '100%';
+                    replacementImg.style.filter = 'none';
+                } catch (e) {
+                    console.error('打印预渲染失败，使用 CSS 滤镜回退:', e);
+                    failCount++;
+                    // 【终极保险】如果 Canvas 失败，强制用 CSS 滤镜把字变成浅红色，绝不留下黑色原图
+                    replacementImg = document.createElement('img');
+                    replacementImg.src = url;
+                    replacementImg.style.width = '100%';
+                    replacementImg.style.height = '100%';
+                    replacementImg.style.filter = `invert(50%) sepia(100%) saturate(1000%) hue-rotate(-30deg) opacity(${traceOpacity})`;
+                }
+
+                if (replacementImg) {
+                    originalElements.push({ parent: el.parentNode, original: el, replacement: replacementImg });
+                    el.parentNode.replaceChild(replacementImg, el);
+                }
+            }
+
+            await Promise.all(originalElements.map(it => it.replacement.decode ? it.replacement.decode().catch(() => {}) : null));
+            await new Promise(r => setTimeout(r, 100));
+            overlay.style.display = 'none';
+
+            if (failCount > 0) {
+                alert(`提示：有 ${failCount} 个描红字使用了备选渲染方式。\n\n强烈建议使用 http://localhost:8000 访问本页面，以确保最佳打印效果。`);
+            }
+
+            window.print();
+
+            const restore = () => {
+                originalElements.forEach(item => {
+                    if (item.replacement.parentNode) {
+                        item.replacement.parentNode.replaceChild(item.original, item.replacement);
+                    }
+                });
+                window.removeEventListener('afterprint', restore);
+            };
+            window.addEventListener('afterprint', restore);
+            setTimeout(restore, 2000);
+        }
+
+        // ================= 交互事件 =================
+        function onColorChange() { traceColor = document.getElementById('traceColorPicker').value; renderCopybook(); }
+        function onOpacityChange(val) { traceOpacity = parseInt(val) / 100; document.getElementById('traceOpacityVal').textContent = val + '%'; renderCopybook(); }
+        function changeCellSize(val) { cellSize = parseInt(val); document.getElementById('cellSizeVal').textContent = cellSize + 'px'; renderCopybook(); }
+        function changeImgScale(val) { imgScale = parseInt(val) / 100; document.getElementById('imgScaleVal').textContent = val + '%'; renderCopybook(); }
+        function toggleGridLines() { showGridLines = document.getElementById('toggleGridLines').checked; renderCopybook(); }
+        function toggleBorder() { showBorder = document.getElementById('toggleBorder').checked; renderCopybook(); }
+        function toggleTrace() { showTrace = document.getElementById('toggleTrace').checked; renderCopybook(); }
+        function toggleOriginTrace() { originAsTrace = document.getElementById('toggleOriginTrace').checked; renderCopybook(); }
+        function changePageSize() { const val = document.getElementById('pageSizeSelect').value; document.getElementById('copybook').className = 'page-' + val; setTimeout(renderCopybook, 100); }
+
+        function clearAll() {
+            if (!confirm("确定要清空当前字帖吗？")) return;
+            selectedChars = [];
+            document.querySelectorAll('.char-item').forEach(item => item.classList.remove('selected'));
+            renderCopybook();
+        }
+    </script>
+</body>
+</html>
