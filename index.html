@@ -221,29 +221,62 @@
             discoverFolders();
         };
 
+        // 自动发现有哪些页码文件夹。
+        // 注意：如果本页叫 index.html，python 的 http.server 访问 "./" 时返回的是本页自己，而不是文件夹列表，
+        // 所以不能只靠读目录列表。这里依次尝试：① pages.json 清单 ② 目录列表 ③ 逐个探测 001~MAX_PAGE
+        const MAX_PAGE = 150;
         async function discoverFolders() {
             const statusText = document.getElementById('statusText');
+            statusText.textContent = '正在扫描文件夹...';
+            const pages = new Set();
+            const pad = n => String(n).padStart(3, '0');
+
+            // ① 可选清单：同目录放一个 pages.json，内容如 ["001","002","024"]（部署到 Netlify 等没有目录列表的地方时最可靠）
             try {
-                const response = await fetch('./');
-                const html = await response.text();
-                const regex = /href="\.?\/?(\d{3})\/?"/g;
-                let match;
-                const validPages = new Set();
-                while ((match = regex.exec(html)) !== null) {
-                    validPages.add(match[1]);
-                }
-                const pagesArray = Array.from(validPages).sort();
-                if (pagesArray.length > 0) {
-                    renderPagination(pagesArray);
-                    statusText.textContent = `已发现 ${pagesArray.length} 个有效文件夹`;
-                    return;
-                }
-            } catch (e) {
-                console.warn("自动扫描文件夹失败，回退到默认页码。", e);
+                const r = await fetch('pages.json', { cache: 'no-store' });
+                if (r.ok) (await r.json()).forEach(x => pages.add(pad(parseInt(x, 10))));
+            } catch (e) {}
+
+            // ② 目录列表（只有真的是列表页时才会匹配到）
+            if (pages.size === 0) {
+                try {
+                    const html = await (await fetch('./')).text();
+                    const regex = /href="\.?\/?(\d{3})\/?"/g;
+                    let m;
+                    while ((m = regex.exec(html)) !== null) pages.add(m[1]);
+                } catch (e) {}
             }
-            const fallbackPages = ['024', '025'];
-            renderPagination(fallbackPages);
-            statusText.textContent = `已加载默认文件夹 (${fallbackPages.join(', ')})`;
+
+            // ③ 逐个探测：先看 页码/chars/ 目录是否存在，再试几张典型图片
+            if (pages.size === 0) {
+                const exists = async (p) => {
+                    try {
+                        const r = await fetch(`./${p}/${SUB}`);
+                        if (r.ok) return true;
+                    } catch (e) {}
+                    for (let i = 1; i <= 3; i++) {
+                        try {
+                            const r = await fetch(`./${p}/${SUB}${p}${pad(i)}.png`, { method: 'HEAD' });
+                            if (r.ok) return true;
+                        } catch (e) {}
+                    }
+                    return false;
+                };
+                const all = Array.from({ length: MAX_PAGE }, (_, i) => pad(i + 1));
+                for (let i = 0; i < all.length; i += 30) {
+                    const batch = all.slice(i, i + 30);
+                    const res = await Promise.all(batch.map(exists));
+                    batch.forEach((p, k) => { if (res[k]) pages.add(p); });
+                }
+            }
+
+            const pagesArray = Array.from(pages).sort();
+            if (pagesArray.length > 0) {
+                renderPagination(pagesArray);
+                statusText.textContent = `已发现 ${pagesArray.length} 个页码文件夹`;
+                return;
+            }
+            statusText.textContent = '没有找到任何页码文件夹，请检查目录结构：页码/chars/页码001.png';
         }
 
         function renderPagination(pages) {
