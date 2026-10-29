@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>田英章楷书字帖生成器</title>
+    <title>楷书字帖生成器</title>
     <style>
         /* ================= 基础设置 ================= */
         body { font-family: "Microsoft YaHei", sans-serif; display: flex; margin: 0; height: 100vh; background: #f4f6f8; overflow: hidden; }
@@ -29,6 +29,10 @@
         .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 15px; overflow-y: auto; }
 
         .toolbar { background: #fff; padding: 15px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; position: sticky; top: 0; z-index: 100; width: 100%; max-width: 980px; box-sizing: border-box; }
+        .toolbar-toggle { align-self: center; background: #f1f3f5; border: 1px solid #dee2e6; border-radius: 16px; padding: 3px 14px; font-size: 12px; color: #555; cursor: pointer; }
+        .toolbar-toggle:hover { background: #e9ecef; }
+        .toolbar.collapsed { padding-top: 8px; padding-bottom: 8px; gap: 0; }
+        .toolbar.collapsed .toolbar-row { display: none; }
         .toolbar-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; }
         .toolbar-row:not(:last-child) { border-bottom: 1px solid #eee; padding-bottom: 12px; }
 
@@ -68,7 +72,7 @@
             display: flex; align-items: center; justify-content: center;
             background: #fff;
             flex-shrink: 0;
-            overflow: visible;
+            overflow: hidden;   /* 斜线比格子长，超出部分裁掉，保证线条正好到四个角 */
         }
         .tian-zi-ge.hide-border { border-color: transparent; }
         .tian-zi-ge.hide-lines::before, .tian-zi-ge.hide-lines::after, .tian-zi-ge.hide-lines .diagonal-1, .tian-zi-ge.hide-lines .diagonal-2 { display: none; }
@@ -76,7 +80,7 @@
         .tian-zi-ge::before, .tian-zi-ge::after { content: ''; position: absolute; z-index: 0; }
         .tian-zi-ge::before { width: 100%; height: 0; top: 50%; left: 0; border-top: 1px dashed #ffb3b3; }
         .tian-zi-ge::after { height: 100%; width: 0; left: 50%; top: 0; border-left: 1px dashed #ffb3b3; }
-        .tian-zi-ge .diagonal-1, .tian-zi-ge .diagonal-2 { position: absolute; width: 100%; height: 0; border-top: 1px dashed #ffb3b3; top: 50%; left: 0; }
+        .tian-zi-ge .diagonal-1, .tian-zi-ge .diagonal-2 { position: absolute; width: 141.4214%; height: 0; border-top: 1px dashed #ffb3b3; top: 50%; left: -20.7107%; }
         .tian-zi-ge .diagonal-1 { transform: rotate(45deg); }
         .tian-zi-ge .diagonal-2 { transform: rotate(-45deg); }
 
@@ -131,7 +135,8 @@
 
     <!-- 右侧主区域 -->
     <div class="main">
-        <div class="toolbar">
+        <div class="toolbar" id="toolbar">
+            <button class="toolbar-toggle" id="toolbarToggle" onclick="toggleToolbar()">▲ 收起工具栏</button>
             <div class="toolbar-row">
                 <div class="toolbar-group">
                     <span>描红颜色：</span>
@@ -575,6 +580,13 @@
         // ================= 交互事件 =================
         function onColorChange() { traceColor = document.getElementById('traceColorPicker').value; renderCopybook(); }
         function onOpacityChange(val) { traceOpacity = parseInt(val) / 100; document.getElementById('traceOpacityVal').textContent = val + '%'; renderCopybook(); }
+        function toggleToolbar() {
+            const tb = document.getElementById('toolbar');
+            const c = tb.classList.toggle('collapsed');
+            document.getElementById('toolbarToggle').textContent = c ? '▼ 展开工具栏' : '▲ 收起工具栏';
+            try { localStorage.setItem('zitie-toolbar-collapsed', c ? '1' : '0'); } catch (e) {}
+        }
+        try { if (localStorage.getItem('zitie-toolbar-collapsed') === '1') window.addEventListener('DOMContentLoaded', toggleToolbar); } catch (e) {}
         function changeCellSize(val) { cellSize = parseInt(val); document.getElementById('cellSizeVal').textContent = cellSize + 'px'; renderCopybook(); }
         function changeImgScale(val) { imgScale = parseInt(val) / 100; document.getElementById('imgScaleVal').textContent = val + '%'; renderCopybook(); }
         function toggleGridLines() { showGridLines = document.getElementById('toggleGridLines').checked; renderCopybook(); }
